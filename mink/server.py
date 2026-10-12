@@ -1,9 +1,12 @@
 """Mink's local web server and JSON API. Listens on 127.0.0.1 only."""
 
 import mimetypes
+import os
 import re
 import shutil
 import subprocess
+import sys
+import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated
@@ -18,16 +21,7 @@ from .audio import SUPPORTED_EXTENSIONS
 from .config import WHISPER_MODELS, ensure_dirs, load_settings, save_settings
 
 STATIC_DIR = Path(__file__).parent / "static"
-CODE_DIR = Path(__file__).parent
 UPLOAD_CHUNK_BYTES = 1024 * 1024
-
-
-def _code_stamp() -> float:
-    """Latest change time of Mink's Python files, to notice updates made while it runs."""
-    return max(path.stat().st_mtime for path in CODE_DIR.glob("*.py"))
-
-
-STARTUP_CODE_STAMP = _code_stamp()
 
 
 # ---------- Request bodies ----------
@@ -131,8 +125,14 @@ def info():
         "speaker_engine": diarizer.engine_name(settings["hf_token"].strip()),
         "models": {key: preset["label"] for key, preset in WHISPER_MODELS.items()},
         "settings": settings,
-        "restart_needed": _code_stamp() != STARTUP_CODE_STAMP,
     }
+
+
+@app.post("/api/restart")
+def restart():
+    """Restart Mink in place, with no Terminal needed. Any queued work resumes after."""
+    threading.Timer(0.5, _restart_process).start()  # Answer the request first
+    return {"ok": True}
 
 
 @app.put("/api/settings")
@@ -314,6 +314,11 @@ def restore_voice(name: str, entry: dict):
 
 
 # ---------- Helpers ----------
+
+
+def _restart_process() -> None:
+    os.environ["MINK_NO_BROWSER"] = "1"  # The page reloads itself; don't open another tab
+    os.execv(sys.executable, [sys.executable, "-m", "mink"])
 
 
 def _export_file(session_id: str, file_format: str, timestamps: bool) -> tuple[str, str]:

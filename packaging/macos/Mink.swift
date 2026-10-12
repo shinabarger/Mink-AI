@@ -198,6 +198,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         main.addItem(submenu("Mink", [
             item("About Mink", #selector(NSApplication.orderFrontStandardAboutPanel(_:))),
             .separator(),
+            item("Settings…", #selector(openSettings), ",", target: self),
+            item("Restart Mink", #selector(restartMink), target: self),
+            .separator(),
             item("Hide Mink", #selector(NSApplication.hide(_:)), "h"),
             item("Quit Mink", #selector(NSApplication.terminate(_:)), "q"),
         ]))
@@ -226,6 +229,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func reload() { webView.load(URLRequest(url: homeURL)) }
+
+    // The page does the work, so the menu and the Settings window behave the same.
+    @objc private func openSettings() { webView.evaluateJavaScript("openSettings()", completionHandler: nil) }
+
+    @objc private func restartMink() { webView.evaluateJavaScript("restartMink()", completionHandler: nil) }
 
     @objc private func showLog() { NSWorkspace.shared.activateFileViewerSelecting([Paths.log]) }
 

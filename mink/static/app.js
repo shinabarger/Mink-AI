@@ -167,17 +167,8 @@ async function readableError(response) {
     // Plain text error from Mink itself
   }
   const routeMissing = response.status === 404 && detail === "Not Found";
-  if (routeMissing) {
-    await checkForUpdate();
-    return "This needs the latest version of Mink running. Quit Mink and open it again.";
-  }
+  if (routeMissing) return "This needs the latest version of Mink running. Restart Mink in Settings.";
   return detail || `Something went wrong (error ${response.status}). Try again.`;
-}
-
-/** Mink's files can be updated while it runs. Tell the user when a restart is needed. */
-async function checkForUpdate() {
-  const info = await fetch("/api/info").then((response) => response.json());
-  $("update-banner").hidden = !info.restart_needed;
 }
 
 const speakersUrl = (id) => `/api/sessions/${state.session.id}/speakers/${id}`;
@@ -913,6 +904,11 @@ async function openSettings() {
       <input id="set-export-folder" class="text-input" placeholder="Leave empty to download through your browser" value="${escapeHtml(s.export_folder)}" autocomplete="off">
       <div class="hint">Paste a folder path, for example ~/Documents/Transcripts. In Finder, right click a folder, hold Option, and choose Copy as Pathname.</div>
     </div>
+    <div class="field">
+      <h3 class="field-title">Restart Mink</h3>
+      <div class="hint" style="margin-bottom:8px">Fixes most hiccups. Your recordings are safe. Anything mid-transcription starts over on its own.</div>
+      <button class="btn btn-ghost" data-action="restart-mink" data-tip="Restart Mink without closing it">${icon("refresh")}Restart Mink</button>
+    </div>
     <div class="modal-actions">
       <button class="btn btn-ghost" data-action="close-modal">${icon("close")}Cancel</button>
       <button class="btn btn-primary" data-action="save-settings">${icon("check")}Save</button>
@@ -1088,6 +1084,22 @@ async function relabelFromFixes() {
   );
 }
 
+/** Restart the server, wait for it to come back, then reload the page. Also used by the Mac app's menu. */
+async function restartMink() {
+  closeModal();
+  toast("Restarting Mink...");
+  await fetch("/api/restart", { method: "POST" }).catch(() => {});
+  await new Promise((resolve) => setTimeout(resolve, 1500));
+  for (let attempt = 0; attempt < 120; attempt++) {
+    const up = await fetch("/api/info")
+      .then((response) => response.ok)
+      .catch(() => false);
+    if (up) return location.reload();
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+  toast("Mink didn't come back. Quit it and open it again.");
+}
+
 // ============ 8b. Tooltips ============
 // One shared tooltip for every element with data-tip. Shows on hover and keyboard focus,
 // hides on Esc or click, and is linked with aria-describedby for screen readers.
@@ -1186,6 +1198,7 @@ const actions = {
   "open-settings": openSettings,
   "open-voices": openVoices,
   "close-modal": closeModal,
+  "restart-mink": restartMink,
   "save-settings": async () => {
     await saveSettings();
     closeModal();
@@ -1418,8 +1431,6 @@ async function start() {
   if (sessionFromUrl && state.sessions.some((s) => s.id === sessionFromUrl)) openSession(sessionFromUrl);
   else showView("home");
 
-  checkForUpdate();
-  setInterval(checkForUpdate, 60_000);
   setInterval(async () => {
     const anyRunning = state.sessions.some((s) => s.status === "queued" || s.status === "processing");
     if (anyRunning) await refreshSessionList();

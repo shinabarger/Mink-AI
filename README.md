@@ -35,7 +35,7 @@ Mink AI is a private, localized, voice transcription tool for transcribing recor
    - Open Mink again and click **Open Anyway**. You only do this once.
 4. **Wait for setup.** The first launch downloads what Mink needs and takes a few minutes. After that, Mink opens in seconds.
 
-To quit, press `Cmd + Q`. If a transcription is still running, Mink asks first.
+To quit, press `Cmd + Q`. If a transcription is still running, Mink asks first. Settings are under **Mink → Settings…** (`Cmd + ,`), including a **Restart Mink** button if anything gets stuck.
 
 <details>
 <summary>Run from source instead</summary>
