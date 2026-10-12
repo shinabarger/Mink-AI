@@ -1,14 +1,14 @@
 <img src="mink/static/logo.svg" width="72" alt="Mink logo, a smiling mink face">
 
-# Mink
+# Mink AI
 
-Free, private transcription for long recordings, with speaker labels you can fix in a few clicks. Runs entirely on your Mac.
+Mink AI is a private, localized, voice transcription tool for transcribing recordings. It's especially focused on long recordings with multiple speakers, often speaking over one another. It runs entirely on your local machine and is currently design for Mac computers. 
 
 ## Requirements
 
 - A Mac with Apple Silicon (M1 or newer) running macOS 14 or later
 - About 5 GB of free disk space
-- An internet connection for the first run (to download the models)
+- An internet connection for the first run to download the models
 
 ## Install
 
@@ -28,16 +28,16 @@ To start Mink again later, repeat step 3.
 
 ## Add your own Hugging Face key (recommended, free)
 
-Mink works out of the box, but its speaker labels are much better with the free [pyannote](https://huggingface.co/pyannote/speaker-diarization-community-1) model. That model needs your own free Hugging Face access token. No key is included in this project; each person uses their own.
+Mink works out of the box, but its speaker labels are much better with the free [pyannote](https://huggingface.co/pyannote/speaker-diarization-community-1) model. That model needs your own free Hugging Face access token, which you'll have to acquire.
 
-**Get a key (about 5 minutes):**
+**Get a key:**
 
 1. Create a free account at [huggingface.co/join](https://huggingface.co/join).
 2. Open the [speaker model page](https://huggingface.co/pyannote/speaker-diarization-community-1) while signed in, fill in the short form, and click **Agree**. Without this step the key won't work.
 3. Go to [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens/new?tokenType=read), choose the **Read** token type, give it any name (for example `mink`), and click **Create token**.
 4. Copy the token. It starts with `hf_`.
 
-**Put the key in Mink:**
+**Put the key in Mink AI:**
 
 1. Start Mink and click **Settings** in the left sidebar.
 2. Paste the token into the box under **Better speaker labels** and click **Save**.
@@ -55,14 +55,7 @@ Recordings, transcripts, and settings are stored in `~/Mink`. Delete that folder
 
 ## Accessibility
 
-Mink aims for WCAG 2.2 AA: full keyboard use, visible focus, screen reader labels, and text contrast of at least 4.5:1. Checked with [axe-core](https://github.com/dequelabs/axe-core). If something doesn't work for you, please open an issue.
-
-## Development
-
-```
-uv run --group dev pytest
-uv run --group dev ruff check .
-```
+Mink AI aims for WCAG 2.2 AA.
 
 ## License
 
