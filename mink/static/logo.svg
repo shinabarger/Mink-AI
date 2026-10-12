@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Mink">
+  <rect width="64" height="64" rx="16" fill="#0d3242"/>
+  <!-- small round ears set wide, like a weasel -->
+  <circle cx="13.5" cy="25" r="5" fill="#5fa3b0"/>
+  <circle cx="50.5" cy="25" r="5" fill="#5fa3b0"/>
+  <circle cx="13.5" cy="25" r="2.4" fill="#c7deea"/>
+  <circle cx="50.5" cy="25" r="2.4" fill="#c7deea"/>
+  <!-- long, low head tapering to the snout -->
+  <path d="M32 18c11.5 0 20 6.5 20 15.5 0 6-4.5 10-10 13.5-3.3 2.1-6.4 3.5-10 3.5s-6.7-1.4-10-3.5C16.5 43.5 12 39.5 12 33.5 12 24.5 20.5 18 32 18z" fill="#5fa3b0"/>
+  <!-- soft muzzle with the white chin minks are known for -->
+  <ellipse cx="32" cy="42" rx="8.5" ry="5.8" fill="#a9d1d9"/>
+  <ellipse cx="32" cy="47.6" rx="4.6" ry="2.4" fill="#f9f7f3"/>
+  <!-- eyes -->
+  <circle cx="23" cy="32" r="2.9" fill="#0d3242"/>
+  <circle cx="41" cy="32" r="2.9" fill="#0d3242"/>
+  <circle cx="24" cy="31" r="1" fill="#ffffff"/>
+  <circle cx="42" cy="31" r="1" fill="#ffffff"/>
+  <!-- nose and smile -->
+  <ellipse cx="32" cy="39.5" rx="3.2" ry="2.2" fill="#0d3242"/>
+  <path d="M28.8 43c1.1 1.2 2.4 1.2 3.2 0 .8 1.2 2.1 1.2 3.2 0" fill="none" stroke="#0d3242" stroke-width="1.3" stroke-linecap="round"/>
+  <!-- whiskers -->
+  <path d="M25 40.5l-8 -1.5M25 42.5l-7.5 1.5M39 40.5l8 -1.5M39 42.5l7.5 1.5" stroke="#c7deea" stroke-width="0.9" stroke-linecap="round"/>
+</svg>

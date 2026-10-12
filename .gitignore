@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+
+# macOS
+.DS_Store
+
+# Never commit recordings
+*.m4a
+*.mp3
+*.wav
+
+# Transcripts Mink exports here stay private
+Transcripts/

@@ -1,0 +1,38 @@
+[project]
+name = "mink"
+version = "1.0.0"
+description = "Free, local transcription with speaker labels for long recordings"
+license = "MIT"
+readme = "README.md"
+requires-python = ">=3.11,<3.14"
+dependencies = [
+    # Apple Silicon Macs use the GPU through MLX. Everything else uses faster-whisper on the CPU.
+    "mlx-whisper>=0.4.2; sys_platform == 'darwin' and platform_machine == 'arm64'",
+    "faster-whisper>=1.1; sys_platform != 'darwin' or platform_machine != 'arm64'",
+    # Pinned together: sherpa-onnx loads libonnxruntime from sherpa-onnx-core, and a mismatch crashes on import.
+    "sherpa-onnx==1.13.8",
+    "sherpa-onnx-core==1.13.8",
+    # The more accurate speaker model, used when a Hugging Face token is set in Settings.
+    "pyannote.audio>=4.0.7,<5",
+    "av>=12",
+    "numpy>=1.26",
+    "fastapi>=0.115",
+    "uvicorn>=0.30",
+    "python-multipart>=0.0.9",
+]
+
+[dependency-groups]
+dev = ["pytest>=8", "ruff>=0.6"]
+
+[tool.uv]
+package = false
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "N"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
