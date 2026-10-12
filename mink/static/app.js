@@ -169,7 +169,7 @@ async function readableError(response) {
   const routeMissing = response.status === 404 && detail === "Not Found";
   if (routeMissing) {
     await checkForUpdate();
-    return "This needs the latest version of Mink running. Restart it: Ctrl+C in Terminal, then bash start.command.";
+    return "This needs the latest version of Mink running. Quit Mink and open it again.";
   }
   return detail || `Something went wrong (error ${response.status}). Try again.`;
 }

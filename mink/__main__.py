@@ -1,6 +1,7 @@
 """Start Mink: python -m mink"""
 
 import logging
+import os
 import socket
 import threading
 import time
@@ -15,7 +16,8 @@ URL = f"http://{HOST}:{PORT}"
 
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
-    threading.Thread(target=_open_browser_when_ready, daemon=True).start()
+    if not os.environ.get("MINK_NO_BROWSER"):  # The Mac app shows Mink in its own window
+        threading.Thread(target=_open_browser_when_ready, daemon=True).start()
     uvicorn.run("mink.server:app", host=HOST, port=PORT, log_level="warning")
 
 

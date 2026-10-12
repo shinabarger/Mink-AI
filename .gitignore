@@ -15,3 +15,6 @@ __pycache__/
 
 # Transcripts Mink exports here stay private
 Transcripts/
+
+# Mac app build output
+dist/

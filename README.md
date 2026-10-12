@@ -27,19 +27,28 @@ Mink AI is a private, localized, voice transcription tool for transcribing recor
 
 ## Install
 
-1. **Get the code.** Either:
-   - Click the green **Code** button on this page, choose **Download ZIP**, and unzip it into your Documents folder, or
-   - Clone it with [GitHub Desktop](https://desktop.github.com): **File → Clone Repository**, paste this repository's URL, and choose your Documents folder.
-2. **Open Terminal**
-3. **Start Mink.** Paste these two lines, using the folder name you ended up with:
+1. **[Download Mink.dmg](https://github.com/shinabarger/Mink-AI/releases/latest/download/Mink.dmg)** and open it.
+2. **Drag Mink into the Applications folder** in the window that opens.
+3. **Open Mink from Applications.** Mink isn't signed with a paid Apple developer account, so the first time macOS blocks it:
+   - Click **Done** on the warning.
+   - Open **System Settings → Privacy & Security**, scroll down, and click **Open Anyway** next to "Mink was blocked".
+   - Open Mink again and click **Open Anyway**. You only do this once.
+4. **Wait for setup.** The first launch downloads what Mink needs and takes a few minutes. After that, Mink opens in seconds.
+
+To quit, press `Cmd + Q`. If a transcription is still running, Mink asks first.
+
+<details>
+<summary>Run from source instead</summary>
+
+1. Download this repository (green **Code** button → **Download ZIP**) or clone it with [GitHub Desktop](https://desktop.github.com).
+2. In Terminal, go to the folder and start Mink:
    ```
    cd ~/Documents/mink
    bash start.command
    ```
-   The first launch installs everything it needs, which takes a few minutes. Your browser then opens Mink at http://127.0.0.1:8765.
-4. **Leave the Terminal window open** while you use Mink. Press `Ctrl + C` in it to quit.
+   Your browser opens Mink at http://127.0.0.1:8765. Leave Terminal open while you use it, and press `Ctrl + C` to quit.
 
-To start Mink again later, repeat step 3.
+</details>
 
 ## Add your own Hugging Face key (recommended, free)
 
@@ -54,7 +63,7 @@ Mink works out of the box, but its speaker labels are much better with the free 
 
 **Put the key in Mink AI:**
 
-1. Start Mink and click **Settings** in the left sidebar.
+1. Open Mink and click **Settings** in the left sidebar.
 2. Paste the token into the box under **Better speaker labels** and click **Save**.
 3. The bottom of the sidebar should now say **pyannote community-1**.
 
@@ -62,11 +71,23 @@ Your key is saved only on your Mac, in `~/Mink/settings.json`, which is outside 
 
 ## Updating
 
-Download or pull the latest version into the same folder, then restart Mink (`Ctrl + C`, then step 3).
+Download the latest **Mink.dmg** and drag it into Applications again, choosing **Replace**. Your recordings and settings are kept.
 
 ## Where your data lives
 
-Recordings, transcripts, and settings are stored in `~/Mink`. Delete that folder to remove everything.
+| What | Where |
+|---|---|
+| Recordings, transcripts, settings | `~/Mink` |
+| Mink's Python packages | `~/Library/Application Support/Mink` |
+| Log, for troubleshooting | `~/Library/Logs/Mink` (or **Help → Show Mink Log**) |
+
+To uninstall, drag Mink from Applications to the Trash and delete those folders.
+
+## Making a new release
+
+1. Update `version` in `pyproject.toml` and commit.
+2. On GitHub, go to **Releases → Draft a new release**, create a tag like `v1.1.0`, and click **Publish release**.
+3. GitHub builds `Mink.dmg` and attaches it to the release in about 5 minutes. The download link above always points to the newest one.
 
 ## Accessibility
 
