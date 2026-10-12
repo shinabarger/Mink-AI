@@ -4,6 +4,12 @@
 
 Mink AI is a private, localized, voice transcription tool for transcribing recordings. It's especially focused on long recordings with multiple speakers, often speaking over one another. It runs entirely on your local machine and is currently design for Mac computers. 
 
+<p>
+  <a href="https://github.com/shinabarger/Mink-AI/releases/latest/download/Mink.dmg"><img src="https://img.shields.io/badge/Download_for_Mac-Mink.dmg-0d3242?style=for-the-badge&logo=apple&logoColor=white" alt="Download Mink for Mac" height="44"></a>
+</p>
+
+Free and open source. Apple Silicon Macs (M1 or newer), macOS 14 or later. [Install steps](#install)
+
 ![Mink transcript view: each line labeled by speaker, with the word being played highlighted](docs/screenshots/transcript.png)
 
 <details>
@@ -28,12 +34,38 @@ Mink AI is a private, localized, voice transcription tool for transcribing recor
 ## Install
 
 1. **[Download Mink.dmg](https://github.com/shinabarger/Mink-AI/releases/latest/download/Mink.dmg)** and open it.
-2. **Drag Mink into the Applications folder** in the window that opens.
-3. **Open Mink from Applications.** Mink isn't signed with a paid Apple developer account, so the first time macOS blocks it:
-   - Click **Done** on the warning.
-   - Open **System Settings → Privacy & Security**, scroll down, and click **Open Anyway** next to "Mink was blocked".
-   - Open Mink again and click **Open Anyway**. You only do this once.
+2. **Drag Mink onto the Applications folder** in the window that opens.
+3. **Open Mink from Applications.** The first time, macOS blocks it. See the next section, it takes about 30 seconds.
 4. **Wait for setup.** The first launch downloads what Mink needs and takes a few minutes. After that, Mink opens in seconds.
+
+### Getting past the macOS security warning
+
+Mink is free, so it isn't signed with Apple's paid developer certificate. macOS shows a warning the first time you open it. You only do this once.
+
+**macOS 15 (Sequoia) or later**
+
+1. Open Mink. When macOS says it can't verify Mink, click **Done**.
+2. Open **System Settings → Privacy & Security**.
+3. Scroll down to **Security**. Next to "Mink was blocked to protect your Mac", click **Open Anyway** and enter your Mac password.
+4. Open Mink again and click **Open Anyway**.
+
+**macOS 14 (Sonoma)**
+
+1. In Applications, **right-click** Mink (or Control-click) and choose **Open**.
+2. Click **Open** in the warning.
+
+<details>
+<summary>macOS says Mink "is damaged and can't be opened"</summary>
+
+The app isn't damaged. macOS shows this for some downloaded apps that aren't signed. Open Terminal and paste:
+
+```
+xattr -dr com.apple.quarantine /Applications/Mink.app
+```
+
+Then open Mink normally.
+
+</details>
 
 To quit, press `Cmd + Q`. If a transcription is still running, Mink asks first. Settings are under **Mink → Settings…** (`Cmd + ,`), including a **Restart Mink** button if anything gets stuck.
 
