@@ -4,6 +4,21 @@
 
 Mink AI is a private, localized, voice transcription tool for transcribing recordings. It's especially focused on long recordings with multiple speakers, often speaking over one another. It runs entirely on your local machine and is currently design for Mac computers. 
 
+![Mink transcript view: each line labeled by speaker, with the word being played highlighted](docs/screenshots/transcript.png)
+
+<details>
+<summary>More screenshots</summary>
+
+**Fix a speaker in two clicks.** Rename someone everywhere, or move just one line to the right person.
+
+![Speaker menu open on a line Mink wasn't sure about](docs/screenshots/fix-speaker.png)
+
+**Home.** Drag in a recording to start. Everything stays on your Mac.
+
+![Mink home screen with a drop zone and recent recordings](docs/screenshots/home.png)
+
+</details>
+
 ## Requirements
 
 - A Mac with Apple Silicon (M1 or newer) running macOS 14 or later

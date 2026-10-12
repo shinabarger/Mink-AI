@@ -452,7 +452,7 @@ function openSpeakerMenu(button) {
       <input name="name" value="${escapeHtml(speaker.name)}" aria-label="Speaker name" list="voice-names" autocomplete="off">
       <button class="btn btn-primary">${icon("check")}Save</button>
     </form>
-    <div class="scope">Updates all ${count} lines by ${escapeHtml(speaker.name)}. Use a name that's already here to merge two speakers.</div>
+    <div class="scope">Updates ${count === 1 ? "the 1 line" : `all ${count} lines`} by ${escapeHtml(speaker.name)}. Use a name that's already here to merge two speakers.</div>
     ${moveSection}
     <datalist id="voice-names">${savedVoices}</datalist>`;
   popover.hidden = false;
@@ -463,9 +463,15 @@ function openSpeakerMenu(button) {
 }
 
 function positionNear(popover, anchor) {
-  const rect = anchor.getBoundingClientRect();
-  const top = Math.min(rect.bottom + 6, window.innerHeight - popover.offsetHeight - 12);
-  const left = Math.min(rect.left, window.innerWidth - popover.offsetWidth - 12);
+  // Open under the whole line, not just its name, so the words being fixed stay visible.
+  // If it won't fit below, scroll the line up first.
+  const lineEl = anchor.closest(".line");
+  const below = () => (lineEl || anchor).getBoundingClientRect();
+  if (lineEl && below().bottom + popover.offsetHeight + 18 > window.innerHeight) {
+    lineEl.scrollIntoView({ block: "start" });
+  }
+  const top = Math.min(below().bottom + 6, window.innerHeight - popover.offsetHeight - 12);
+  const left = Math.min(anchor.getBoundingClientRect().left, window.innerWidth - popover.offsetWidth - 12);
   popover.style.top = `${Math.max(12, top)}px`;
   popover.style.left = `${Math.max(12, left)}px`;
 }

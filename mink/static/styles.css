@@ -680,7 +680,7 @@ kbd {
 }
 
 .transcript {
-  padding: 10px 56px 140px;
+  padding: 10px 56px 50vh; /* Room to scroll the last lines up, e.g. above the speaker menu */
 }
 .line {
   display: grid;
@@ -1185,4 +1185,7 @@ input[type="range"] {
   line-height: 1.35;
   pointer-events: none;
   box-shadow: 0 6px 18px var(--shadow);
+}
+.line {
+  scroll-margin-top: 72px; /* Clear the sticky tab bar */
 }
