@@ -15,7 +15,7 @@ Mink AI is a private, localized, voice transcription tool for transcribing recor
 1. **Get the code.** Either:
    - Click the green **Code** button on this page, choose **Download ZIP**, and unzip it into your Documents folder, or
    - Clone it with [GitHub Desktop](https://desktop.github.com): **File → Clone Repository**, paste this repository's URL, and choose your Documents folder.
-2. **Open Terminal** (press `Cmd + Space`, type *Terminal*, press Enter).
+2. **Open Terminal**
 3. **Start Mink.** Paste these two lines, using the folder name you ended up with:
    ```
    cd ~/Documents/mink
