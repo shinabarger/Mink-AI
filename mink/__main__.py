@@ -10,7 +10,7 @@ import webbrowser
 import uvicorn
 
 HOST = "127.0.0.1"  # Local only. Nothing is reachable from other machines.
-PORT = 8765
+PORT = int(os.environ.get("MINK_PORT", "8765"))  # The Mac app uses its own port
 URL = f"http://{HOST}:{PORT}"
 
 

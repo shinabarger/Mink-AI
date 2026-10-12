@@ -7,7 +7,8 @@
 import AppKit
 import WebKit
 
-let port = 8765
+// Its own port, so the app never shows a copy of Mink started some other way (like Terminal).
+let port = 8766
 let homeURL = URL(string: "http://127.0.0.1:\(port)/")!
 
 enum Paths {
@@ -62,10 +63,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: Startup
 
     private func start() {
-        if Server.isUp() {  // Already running, for example from Terminal
-            DispatchQueue.main.async { self.showMink() }
-            return
-        }
+        stopLeftoverServer()
         openLog()
         do {
             try installPackages()
@@ -101,7 +99,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         process.executableURL = Paths.python
         process.arguments = ["-m", "mink"]
         process.currentDirectoryURL = Paths.project
-        process.environment = environment(["MINK_NO_BROWSER": "1"])
+        process.environment = environment(["MINK_NO_BROWSER": "1", "MINK_PORT": String(port)])
         process.standardOutput = log
         process.standardError = log
         process.terminationHandler = { finished in
@@ -113,6 +111,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         try process.run()
         server = process
+    }
+
+    /// If Mink crashed last time, its server may still hold the port, running older code. Stop it.
+    private func stopLeftoverServer() {
+        let lsof = Process()
+        lsof.executableURL = URL(fileURLWithPath: "/usr/sbin/lsof")
+        lsof.arguments = ["-ti", "tcp:\(port)", "-sTCP:LISTEN"]
+        let pipe = Pipe()
+        lsof.standardOutput = pipe
+        guard (try? lsof.run()) != nil else { return }
+        lsof.waitUntilExit()
+        let output = String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        let pids = output.split(whereSeparator: \.isNewline).compactMap { Int32($0) }
+        guard !pids.isEmpty else { return }
+        pids.forEach { kill($0, SIGTERM) }
+        let deadline = Date().addingTimeInterval(5)
+        while Server.isUp() && Date() < deadline { Thread.sleep(forTimeInterval: 0.3) }
+        if Server.isUp() { pids.forEach { kill($0, SIGKILL) } }
     }
 
     private func waitForServer() throws {
