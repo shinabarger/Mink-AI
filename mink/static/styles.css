@@ -1217,3 +1217,31 @@ input[type="range"] {
   color: var(--muted);
   font-weight: 500;
 }
+/* Showing one speaker's lines */
+.chip.on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.chip.on .count {
+  color: var(--teal-soft);
+}
+.filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 12px 56px 0;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 14px;
+}
+.filter-bar span {
+  flex: 1;
+}
+.filter-bar .btn {
+  padding: 5px 10px;
+  font-size: 14px;
+}

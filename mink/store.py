@@ -6,6 +6,7 @@
 ~/Mink/sessions/<id>/words.json         Whisper's raw words, for redoing speakers
 ~/Mink/sessions/<id>/voiceprints.json   one voice embedding per speaker
 ~/Mink/sessions/<id>/line_prints.npz    one voice embedding per line
+~/Mink/sessions/<id>/short_prints.npz   voice embeddings for lines under a second
 ~/Mink/sessions/<id>/previous/          the version from before the last redo, so a redo can be undone
 """
 
@@ -154,17 +155,18 @@ def load_voiceprints(session_id: str) -> dict[str, list[float]]:
     return json.loads(path.read_text()) if path.exists() else {}
 
 
-def save_line_prints(session_id: str, spans: np.ndarray, vectors: np.ndarray) -> None:
-    """Per line voice embeddings, stored with their times so edits and splits can still find them."""
+def save_line_prints(session_id: str, spans: np.ndarray, vectors: np.ndarray, kind: str = "line") -> None:
+    """Per line voice embeddings, stored with their times so edits and splits can still find them.
+    kind "short" holds the separate samples for lines under a second ("Yeah.")."""
     np.savez_compressed(
-        _folder(session_id) / "line_prints.npz",
+        _folder(session_id) / f"{kind}_prints.npz",
         spans=np.asarray(spans, dtype=np.float32).reshape(-1, 2),
         vectors=np.asarray(vectors, dtype=np.float16),
     )
 
 
-def load_line_prints(session_id: str) -> tuple[np.ndarray, np.ndarray] | None:
-    path = _folder(session_id) / "line_prints.npz"
+def load_line_prints(session_id: str, kind: str = "line") -> tuple[np.ndarray, np.ndarray] | None:
+    path = _folder(session_id) / f"{kind}_prints.npz"
     if not path.exists():
         return None
     data = np.load(path)
@@ -174,7 +176,7 @@ def load_line_prints(session_id: str) -> tuple[np.ndarray, np.ndarray] | None:
 # ---------- Previous version (undo for redo) ----------
 
 # Everything a redo replaces. Speakers and lines live in session.json and are swapped separately.
-ANALYSIS_FILES = ("words.json", "voiceprints.json", "line_prints.npz")
+ANALYSIS_FILES = ("words.json", "voiceprints.json", "line_prints.npz", "short_prints.npz")
 
 
 def save_previous_version(session_id: str, label: str) -> None:

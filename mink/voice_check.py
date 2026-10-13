@@ -23,10 +23,22 @@ REFINE_MARGIN = 0.08
 RELABEL_MIN_SIMILARITY = 0.45
 # If the best and second best speaker are this close, the line is flagged for review.
 UNSURE_MARGIN = 0.05
+# Lines under MIN_SECONDS but at least this long still get a voice sample during Rematch.
+SHORT_MIN_SECONDS = 0.25
+# A short sample is noisier, so it needs a clearer winner before it moves a line that already has a name.
+SHORT_UNSURE_MARGIN = 0.1
 
 
 def spans_to_embed(lines: list[dict]) -> list[tuple[float, float]]:
     return [(line["start"], line["end"]) for line in lines if line["end"] - line["start"] >= MIN_SECONDS]
+
+
+def short_spans(lines: list[dict]) -> list[tuple[float, float] | None]:
+    """For each line, its span if it's too short for the normal check but long enough to sample."""
+    return [
+        (line["start"], line["end"]) if SHORT_MIN_SECONDS <= line["end"] - line["start"] < MIN_SECONDS else None
+        for line in lines
+    ]
 
 
 def vectors_by_line(lines: list[dict], spans: np.ndarray, vectors: np.ndarray) -> dict[int, np.ndarray]:
@@ -61,32 +73,69 @@ def refine_by_voice(lines: list[dict], vectors: dict[int, np.ndarray]) -> int:
     return moved
 
 
-def relabel_from_fixes(lines: list[dict], vectors: dict[int, np.ndarray]) -> tuple[int, int]:
+def relabel_from_fixes(
+    lines: list[dict],
+    vectors: dict[int, np.ndarray],
+    unknown_speaker: str | None = None,
+    short_vectors: dict[int, np.ndarray] | None = None,
+) -> tuple[int, int]:
     """Re-sort lines using the ones you fixed by hand as references.
 
     People you taught are compared against everyone else's current voice too,
     so teaching one person can't pull in lines that belong to someone untaught.
-    Lines you fixed never move. Returns (lines moved, number of people taught).
+    Lines that already have a speaker only move on a clear match. Lines in
+    Unknown always get a best guess, so a rematch empties Unknown instead of
+    leaving them for you. Short lines ("Yeah.") are judged by their own short
+    voice sample, with a stricter bar. Close calls keep the dashed "not sure"
+    edge so you can spot-check them. Lines you fixed never move.
+    Returns (lines moved, number of people taught).
     """
     taught = _centroids(lines, vectors, lambda line: line.get("confirmed"))
     if not taught:
         return 0, 0
-    untaught = _centroids(lines, vectors, lambda line: line["speaker"] not in taught)
+    untaught = _centroids(
+        lines, vectors, lambda line: line["speaker"] not in taught and line["speaker"] != unknown_speaker
+    )
     candidates = {**untaught, **taught}
+    short_vectors = short_vectors or {}
     moved = 0
     for line in lines:
-        vector = vectors.get(line["id"])
+        is_short = line["id"] not in vectors
+        vector = short_vectors.get(line["id"]) if is_short else vectors[line["id"]]
         if line.get("confirmed") or vector is None:
             continue
         scores = _scores(vector, candidates)
         best_score, best_speaker = scores[0]
-        _flag_if_unsure(line, scores)
-        if line["unsure"] or best_score < RELABEL_MIN_SIMILARITY:
-            continue
-        if best_speaker in taught and best_speaker != line["speaker"]:
+        _flag_if_unsure(line, scores, SHORT_UNSURE_MARGIN if is_short else UNSURE_MARGIN)
+        in_unknown = line["speaker"] == unknown_speaker  # Always gets a guess
+        clear_match = best_speaker in taught and not line["unsure"] and best_score >= RELABEL_MIN_SIMILARITY
+        if (in_unknown or clear_match) and best_speaker != line["speaker"]:
             line["speaker"] = best_speaker
             moved += 1
-    return moved, len(taught)
+    return moved + _fill_short_unknown_lines(lines, unknown_speaker), len(taught)
+
+
+def _fill_short_unknown_lines(lines: list[dict], unknown_speaker: str | None) -> int:
+    """Lines too short to sample at all ("Oh.") take the speaker of the closest line in time."""
+    known = [line for line in lines if line["speaker"] != unknown_speaker]
+    if unknown_speaker is None or not known:
+        return 0
+    starts = [line["start"] for line in known]
+    filled = 0
+    for line in lines:
+        if line["speaker"] != unknown_speaker or line.get("confirmed"):
+            continue
+        index = bisect.bisect_left(starts, line["start"])
+        neighbours = known[max(0, index - 1) : index + 1]
+        nearest = min(neighbours, key=lambda other: _gap(line, other))
+        line["speaker"] = nearest["speaker"]
+        line["unsure"] = True
+        filled += 1
+    return filled
+
+
+def _gap(line: dict, other: dict) -> float:
+    return max(other["start"] - line["end"], line["start"] - other["end"], 0.0)
 
 
 def move_unsure_lines(lines: list[dict], unknown_speaker: str) -> int:
@@ -114,9 +163,9 @@ def _scores(vector: np.ndarray, centroids: dict[str, np.ndarray]) -> list[tuple[
     return sorted(((float(np.dot(vector, centroid)), speaker) for speaker, centroid in centroids.items()), reverse=True)
 
 
-def _flag_if_unsure(line: dict, scores: list[tuple[float, str]]) -> None:
+def _flag_if_unsure(line: dict, scores: list[tuple[float, str]], margin: float = UNSURE_MARGIN) -> None:
     runner_up = scores[1][0] if len(scores) > 1 else -1.0
-    line["unsure"] = scores[0][0] - runner_up < UNSURE_MARGIN
+    line["unsure"] = scores[0][0] - runner_up < margin
 
 
 def _normalize(vector: np.ndarray) -> np.ndarray:

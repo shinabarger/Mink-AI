@@ -156,6 +156,27 @@ def line_vectors(session_id: str, lines: list[dict], samples: np.ndarray | None 
     return voice_check.vectors_by_line(lines, *saved)
 
 
+def short_line_vectors(session_id: str, lines: list[dict]) -> dict:
+    """Voice embeddings for lines under a second ("Yeah.", "Okay."). Only missing ones are computed,
+    so a second Rematch is quick."""
+    saved = store.load_line_prints(session_id, kind="short")
+    spans, vectors = saved if saved is not None else (np.zeros((0, 2), np.float32), np.zeros((0, 256), np.float32))
+    have = voice_check.vectors_by_line(lines, spans, vectors)
+    missing = [
+        span
+        for line, span in zip(lines, voice_check.short_spans(lines), strict=True)
+        if span and line["id"] not in have
+    ]
+    if missing:
+        samples = load_audio(store.audio_path(store.get(session_id)))
+        new_vectors = diarizer.embed_spans(samples, missing)
+        order = np.argsort(np.concatenate([spans[:, 0], np.array(missing, dtype=np.float32)[:, 0]]))
+        spans = np.concatenate([spans, np.array(missing, dtype=np.float32)])[order]
+        vectors = np.concatenate([vectors, new_vectors])[order]
+        store.save_line_prints(session_id, spans, vectors, kind="short")
+    return voice_check.vectors_by_line(lines, spans, vectors)
+
+
 def _number_speakers_by_first_appearance(lines: list[dict]) -> tuple[dict, dict[int, str]]:
     """Diarization cluster ids are arbitrary. Renumber in place so whoever talks
     first is Speaker 1. Returns the speakers and the cluster to speaker id map."""

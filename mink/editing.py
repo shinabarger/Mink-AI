@@ -120,8 +120,9 @@ def relabel_from_fixes(session_id: str) -> tuple[dict, int, int]:
                 "First pick the right speaker on a few lines for each person (click a name on a line), then try again."
             )
         vectors = pipeline.line_vectors(session_id, lines)
-        moved, people_taught = voice_check.relabel_from_fixes(lines, vectors)
-        voice_check.move_unsure_lines(lines, speakers.unknown_id(session["speakers"]))
+        unknown = speakers.find_by_name(session["speakers"], speakers.UNKNOWN_NAME)
+        short_vectors = pipeline.short_line_vectors(session_id, lines)
+        moved, people_taught = voice_check.relabel_from_fixes(lines, vectors, unknown, short_vectors)
         speakers.drop_unused(session)
     return session, moved, people_taught
 

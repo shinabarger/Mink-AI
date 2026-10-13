@@ -20,6 +20,7 @@ const state = {
   editing: false,
   recentSpeakers: [], // Speaker ids you picked lately, so they sit at the top of the "Who said this?" list
   showUnnamed: false,
+  speakerFilter: null, // Speaker id whose lines are the only ones shown, or null for everyone
   search: { query: "", hits: [], index: -1 },
   playingLineId: null,
   progressStart: null, // {time, progress} for the ETA estimate
@@ -263,6 +264,7 @@ async function openSession(sessionId) {
   const isNewSession = state.session?.id !== session.id;
   if (isNewSession) {
     resetSearch();
+    state.speakerFilter = null;
     state.progressStart = null;
     setEditing(false);
   }
@@ -340,7 +342,9 @@ function renderTranscriptView() {
   const speakerCount = Object.keys(s.speakers).length;
   $("session-meta").textContent =
     `${dateLabel(s.created_at)} · ${longDuration(s.duration || 0)} · ${speakerCount} speakers · ${s.lines.length} lines`;
+  if (state.speakerFilter && !s.speakers[state.speakerFilter]) state.speakerFilter = null;
   renderVersionBar();
+  renderFilterBar();
   renderSpeakerChips();
   renderLines();
   previewReplaceCount();
@@ -370,22 +374,60 @@ function lineCounts() {
 function renderSpeakerChips() {
   const counts = lineCounts();
   $("speaker-chips").innerHTML = Object.entries(state.session.speakers)
-    .map(
-      ([id, speaker]) => `
-    <button class="chip" data-action="speaker-menu" data-speaker="${id}" data-tip="Rename everywhere">
+    .map(([id, speaker]) => {
+      const on = state.speakerFilter === id;
+      return `
+    <button class="chip ${on ? "on" : ""}" data-action="filter-speaker" data-speaker="${id}" aria-pressed="${on}"
+      data-tip="${on ? "Show everyone again" : `Show only ${escapeHtml(speaker.name)}'s lines`}">
       ${avatar(id, speaker.name)}${escapeHtml(speaker.name)}
-      ${speaker.auto_named ? `<span class="badge" data-tip="Guessed from your voice library. Click to confirm.">auto</span>` : ""}
+      ${speaker.auto_named ? `<span class="badge" data-tip="Guessed from your voice library. Rename to confirm.">auto</span>` : ""}
       <span class="count">${counts[id] || 0}</span>
-    </button>`,
-    )
+    </button>`;
+    })
     .join("");
+}
+
+/** Show only one speaker's lines, so you can check them one voice at a time. */
+function setSpeakerFilter(speakerId) {
+  state.speakerFilter = speakerId;
+  renderSpeakerChips();
+  renderFilterBar();
+  renderLines();
+  $("transcript-view").scrollTop = 0;
+}
+
+function renderFilterBar() {
+  const id = state.speakerFilter;
+  $("filter-bar").hidden = !id;
+  if (!id) return;
+  const speaker = state.session.speakers[id];
+  const count = lineCounts()[id] || 0;
+  $("filter-bar").innerHTML = `
+    <span>Showing only <b>${escapeHtml(speaker.name)}</b>, ${count} ${count === 1 ? "line" : "lines"}. Playback skips everyone else.</span>
+    <button class="btn btn-ghost" data-action="speaker-menu" data-speaker="${id}" data-tip="Rename ${escapeHtml(speaker.name)} everywhere">${icon("pencil")}Rename</button>
+    <button class="btn btn-ghost" data-action="filter-speaker" data-speaker="${id}" data-tip="Show every line again">${icon("close")}Show everyone</button>`;
+}
+
+/** While filtered, jump over audio from speakers that aren't shown. */
+function skipHiddenSpeakers() {
+  const id = state.speakerFilter;
+  const player = audio();
+  if (!id || player.paused) return;
+  const time = player.currentTime;
+  const shown = state.session.lines.filter((line) => line.speaker === id);
+  if (shown.some((line) => time >= line.start - 0.25 && time < line.end + 0.3)) return;
+  const next = shown.find((line) => line.start > time);
+  if (next) player.currentTime = next.start;
+  else player.pause();
 }
 
 function renderLines() {
   const { speakers, lines } = state.session;
   const query = state.search.query;
+  const filter = state.speakerFilter;
   const html = lines
     .map((line, index) => {
+      if (filter && line.speaker !== filter) return "";
       const name = speakers[line.speaker]?.name || "Unknown";
       const previous = lines[index - 1];
       const sameSpeaker = continuesBlock(previous, line);
@@ -404,7 +446,8 @@ function renderLines() {
       </div>`;
     })
     .join("");
-  $("transcript").innerHTML = html || `<div class="empty">No speech was found in this recording.</div>`;
+  const empty = filter ? "No lines left for this speaker." : "No speech was found in this recording.";
+  $("transcript").innerHTML = html || `<div class="empty">${empty}</div>`;
   $("transcript").classList.toggle("editing", state.editing);
   if (query) collectSearchHits();
 }
@@ -777,6 +820,7 @@ function markCurrentWord() {
 }
 
 function followWordsWhilePlaying() {
+  skipHiddenSpeakers();
   markCurrentWord();
   if (!audio().paused) requestAnimationFrame(followWordsWhilePlaying);
 }
@@ -1205,11 +1249,8 @@ async function relabelFromFixes() {
   toast("Comparing every line to your fixes...");
   const result = await api(`/api/sessions/${state.session.id}/relabel`, { method: "POST" });
   setSession(result.session);
-  const unsure = result.session.lines.filter((line) => line.unsure).length;
-  toast(
-    `Moved ${result.moved} lines using fixes for ${result.people} people. ${unsure} lines marked for review.`,
-    undoTo(before),
-  );
+  const people = result.people === 1 ? "1 person" : `${result.people} people`;
+  toast(`Moved ${result.moved} lines using your fixes for ${people}. Close calls have a dashed edge.`, undoTo(before));
 }
 
 /** Restart the server, wait for it to come back, then reload the page. Also used by the Mac app's menu. */
@@ -1399,6 +1440,7 @@ const actions = {
     refreshSessionList();
   },
   "speaker-menu": (el) => openSpeakerMenu(el),
+  "filter-speaker": (el) => setSpeakerFilter(state.speakerFilter === el.dataset.speaker ? null : el.dataset.speaker),
   "move-line": (el) => moveLine($("speaker-popover").dataset.line, el.dataset.speaker),
   "move-line-new": (el) => moveLine($("speaker-popover").dataset.line, null, el.dataset.name),
   "rename-instead": () => {
