@@ -57,6 +57,12 @@ class LineBody(BaseModel):
     new_speaker_name: str | None = None
 
 
+class LinesSpeakerBody(BaseModel):
+    line_ids: list[int]
+    speaker_id: str | None = None
+    new_speaker_name: str | None = None
+
+
 class SplitBody(BaseModel):
     cuts: list[int]
     text: str | None = None  # Edited text to save first, when splitting while editing
@@ -257,6 +263,12 @@ def edit_line(session_id: str, line_id: int, body: LineBody):
     if body.speaker_id is not None or body.new_speaker_name:
         editing.set_line_speaker(session_id, line_id, body.speaker_id, body.new_speaker_name)
     return store.get(session_id)
+
+
+@app.post("/api/sessions/{session_id}/lines/speaker")
+def set_lines_speaker(session_id: str, body: LinesSpeakerBody):
+    """Who said a block of lines: the line you clicked and the ones grouped under it."""
+    return editing.set_lines_speaker(session_id, body.line_ids, body.speaker_id, body.new_speaker_name)
 
 
 @app.post("/api/sessions/{session_id}/lines/{line_id}/split")

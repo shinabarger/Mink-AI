@@ -70,3 +70,12 @@ def test_a_redo_can_be_undone_by_switching_versions(new_session):
     assert restored["lines"][0]["text"] == "Before redo"
     assert restored["speakers"]["0"]["name"] == "Terran"
     assert editing.switch_to_previous_version(session_id)["lines"][0]["text"] == "After redo"
+
+
+def test_moving_a_block_moves_every_line_in_it(new_session):
+    lines = [make_line(0, "0", "A"), make_line(1, "0", "B"), make_line(2, "1", "C")]
+    session_id = new_session(lines=lines, names={"0": "Terran", "1": "Harkin"})
+
+    session = editing.set_lines_speaker(session_id, [0, 1], "1", None)
+
+    assert [line["speaker"] for line in session["lines"]] == ["1", "1", "1"]

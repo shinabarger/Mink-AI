@@ -1175,3 +1175,45 @@ input[type="range"] {
 .line {
   scroll-margin-top: 72px; /* Clear the sticky tab bar */
 }
+/* "Who said this?" picker */
+.picker-search {
+  width: 100%;
+  border: 1px solid var(--control-border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin-bottom: 6px;
+}
+.picker-list {
+  max-height: 300px;
+  overflow-y: auto;
+}
+.picker-group {
+  margin: 10px 6px 4px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+.picker-empty {
+  padding: 8px 6px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.popover-option .grow {
+  flex: 1;
+}
+.popover-option .count {
+  color: var(--muted);
+  font-size: 12px;
+}
+#who-options .popover-option:hover {
+  background: none;
+}
+#who-options .popover-option.active {
+  background: var(--accent-soft);
+}
+.popover-option.subtle {
+  color: var(--muted);
+  font-weight: 500;
+}

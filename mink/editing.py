@@ -24,16 +24,24 @@ def rename_speaker(session_id: str, speaker_id: str, new_name: str) -> dict:
 
 def set_line_speaker(session_id: str, line_id: int, speaker_id: str | None, new_speaker_name: str | None) -> dict:
     """Give one line to a different speaker, or to a brand new one by name."""
+    return set_lines_speaker(session_id, [line_id], speaker_id, new_speaker_name)
+
+
+def set_lines_speaker(
+    session_id: str, line_ids: list[int], speaker_id: str | None, new_speaker_name: str | None
+) -> dict:
+    """Give a block of lines to a different speaker, or to a brand new one by name."""
     with store.transaction(session_id) as session:
-        line = _find_line(session, line_id)
+        lines = [_find_line(session, line_id) for line_id in line_ids]
         if new_speaker_name:
             name = new_speaker_name.strip()
             speaker_id = speakers.find_by_name(session["speakers"], name) or speakers.add(session["speakers"], name)
         if speaker_id not in session["speakers"]:
             raise store.NotFoundError(speaker_id)
-        line["speaker"] = speaker_id
-        line["confirmed"] = True  # You said who this is, so it can teach "Rematch speakers"
-        line["unsure"] = False
+        for line in lines:
+            line["speaker"] = speaker_id
+            line["confirmed"] = True  # You said who this is, so it can teach "Rematch speakers"
+            line["unsure"] = False
     return session
 
 

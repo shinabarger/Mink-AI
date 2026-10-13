@@ -18,6 +18,8 @@ const state = {
   sessions: [],
   session: null, // The open session (full transcript)
   editing: false,
+  recentSpeakers: [], // Speaker ids you picked lately, so they sit at the top of the "Who said this?" list
+  showUnnamed: false,
   search: { query: "", hits: [], index: -1 },
   playingLineId: null,
   progressStart: null, // {time, progress} for the ETA estimate
@@ -45,6 +47,7 @@ const $ = (id) => document.getElementById(id);
 /** One icon set for every button, so they all look alike. Stroke paths on a 24px grid. */
 const ICON_PATHS = {
   check: "M4 12l5 5L20 6",
+  pencil: "M4 20h4L19 9l-4-4L4 16z",
   close: "M6 6l12 12M18 6L6 18",
   download: "M12 4v12m0 0l-4-4m4 4l4-4M4 20h16",
   play: "M8 5v14l11-7z",
@@ -385,7 +388,7 @@ function renderLines() {
     .map((line, index) => {
       const name = speakers[line.speaker]?.name || "Unknown";
       const previous = lines[index - 1];
-      const sameSpeaker = previous && previous.speaker === line.speaker && line.start - previous.end < 3;
+      const sameSpeaker = continuesBlock(previous, line);
       const classes = [line.id === state.playingLineId && "playing", sameSpeaker && "same", line.unsure && "unsure"]
         .filter(Boolean)
         .join(" ");
@@ -406,6 +409,20 @@ function renderLines() {
   if (query) collectSearchHits();
 }
 
+/** A line joins the block above it (no name shown) when the same voice keeps going without a long pause. */
+function continuesBlock(previous, line) {
+  return Boolean(previous) && previous.speaker === line.speaker && line.start - previous.end < 3;
+}
+
+/** The line you clicked plus the lines grouped under its name, until a different voice starts. */
+function blockStartingAt(lineId) {
+  const lines = state.session.lines;
+  const start = lines.findIndex((line) => line.id === Number(lineId));
+  const block = [lines[start]];
+  for (let i = start + 1; i < lines.length && continuesBlock(lines[i - 1], lines[i]); i++) block.push(lines[i]);
+  return block;
+}
+
 function lineById(id) {
   return state.session.lines.find((line) => line.id === Number(id));
 }
@@ -413,44 +430,148 @@ function lineById(id) {
 // ----- Speaker popover: rename everywhere, or move one line -----
 
 function openSpeakerMenu(button) {
-  const speakerId = button.dataset.speaker;
-  const lineId = button.dataset.line;
-  const speaker = state.session.speakers[speakerId];
-  const count = lineCounts()[speakerId] || 0;
-  const others = Object.entries(state.session.speakers).filter(([id]) => id !== speakerId);
-  const sessionNames = Object.values(state.session.speakers).map((s) => s.name);
-  const knownNames = [...new Set([...sessionNames, ...(state.voiceNames || [])])].filter((n) => n !== speaker.name);
-  const savedVoices = knownNames.map((n) => `<option value="${escapeHtml(n)}">`).join("");
-
-  const moveSection =
-    lineId === undefined
-      ? ""
-      : `
-    <hr>
-    <h4>Only this line was said by</h4>
-    ${others.map(([id, s]) => `<button class="popover-option" data-action="move-line" data-line="${lineId}" data-speaker="${id}">${avatar(id, s.name)}${escapeHtml(s.name)}</button>`).join("")}
-    <form data-form="new-speaker" data-line="${lineId}">
-      <input name="name" placeholder="Someone else..." aria-label="Name of who said this line" list="voice-names" autocomplete="off">
-      <button class="btn btn-ghost">${icon("userPlus")}Set</button>
-    </form>`;
-
   const popover = $("speaker-popover");
   focusBeforePopover = button;
-  popover.setAttribute("aria-label", `Speaker: ${speaker.name}`);
-  popover.innerHTML = `
-    <h4>Rename everywhere</h4>
-    <form data-form="rename-speaker" data-speaker="${speakerId}">
-      <input name="name" value="${escapeHtml(speaker.name)}" aria-label="Speaker name" list="voice-names" autocomplete="off">
-      <button class="btn btn-primary">${icon("check")}Save</button>
-    </form>
-    <div class="scope">Updates ${count === 1 ? "the 1 line" : `all ${count} lines`} by ${escapeHtml(speaker.name)}. Use a name that's already here to merge two speakers.</div>
-    ${moveSection}
-    <datalist id="voice-names">${savedVoices}</datalist>`;
+  popover.dataset.speaker = button.dataset.speaker;
+  popover.dataset.line = button.dataset.line ?? "";
+  // A name on a line asks "who said this?". A chip at the top renames that speaker everywhere.
+  if (button.dataset.line === undefined) renderRenameForm(popover);
+  else renderWhoPicker(popover);
   popover.hidden = false;
   positionNear(popover, button);
   const input = popover.querySelector("input");
   input.focus();
   input.select();
+}
+
+function renderRenameForm(popover) {
+  const speakerId = popover.dataset.speaker;
+  const speaker = state.session.speakers[speakerId];
+  const count = lineCounts()[speakerId] || 0;
+  popover.setAttribute("aria-label", `Rename ${speaker.name}`);
+  popover.innerHTML = `
+    <h4>Rename everywhere</h4>
+    <form data-form="rename-speaker" data-speaker="${speakerId}">
+      <input name="name" value="${escapeHtml(speaker.name)}" aria-label="Speaker name" autocomplete="off">
+      <button class="btn btn-primary">${icon("check")}Save</button>
+    </form>
+    <div class="scope">Updates ${count === 1 ? "the 1 line" : `all ${count} lines`} by ${escapeHtml(speaker.name)}. Use a name that's already here to merge two speakers.</div>`;
+}
+
+/** One search box and a short list: type a few letters, press Enter. */
+function renderWhoPicker(popover) {
+  const speaker = state.session.speakers[popover.dataset.speaker];
+  popover.setAttribute("aria-label", "Who said this");
+  popover.innerHTML = `
+    <h4>${blockLabel(popover.dataset.line)}</h4>
+    <input id="who-search" class="picker-search" placeholder="Type a name, or pick one below" autocomplete="off"
+      role="combobox" aria-expanded="true" aria-controls="who-options" aria-autocomplete="list" aria-label="Who said this">
+    <div class="picker-list" id="who-options" role="listbox" aria-label="People"></div>
+    <hr>
+    <button class="popover-option subtle" data-action="rename-instead">${icon("pencil")}Rename ${escapeHtml(speaker.name)} everywhere instead</button>`;
+  renderWhoOptions("");
+}
+
+function isPlaceholderName(name) {
+  return name.startsWith("Speaker ") || name === "Unknown";
+}
+
+/** People first (most recently picked, then most lines), saved voices next, unnamed voices last. */
+function whoChoices(query) {
+  const { speakers } = state.session;
+  const current = $("speaker-popover").dataset.speaker;
+  const counts = lineCounts();
+  const text = query.trim().toLowerCase();
+  const matches = (name) => !text || name.toLowerCase().includes(text);
+  const entries = Object.entries(speakers).filter(([id, s]) => id !== current && matches(s.name));
+  const recency = (id) => {
+    const index = state.recentSpeakers.indexOf(id);
+    return index === -1 ? Infinity : index;
+  };
+  const people = entries
+    .filter(([, s]) => !isPlaceholderName(s.name))
+    .sort(([a], [b]) => recency(a) - recency(b) || (counts[b] || 0) - (counts[a] || 0));
+  const unnamed = entries
+    .filter(([, s]) => isPlaceholderName(s.name))
+    .sort(([, a], [, b]) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+  const inSession = new Set(Object.values(speakers).map((s) => s.name.toLowerCase()));
+  const saved = (state.voiceNames || []).filter((name) => !inSession.has(name.toLowerCase()) && matches(name));
+  const exists = inSession.has(text) || saved.some((name) => name.toLowerCase() === text);
+  return { people, unnamed, saved, newName: text && !exists ? query.trim() : null };
+}
+
+function renderWhoOptions(query) {
+  const { people, unnamed, saved, newName } = whoChoices(query);
+  const counts = lineCounts();
+  const option = (attrs, lead, label, trail = "") =>
+    `<button class="popover-option" role="option" tabindex="-1" ${attrs}>${lead}<span class="grow">${label}</span>${trail}</button>`;
+  const lineCount = (id) => `<span class="count">${counts[id] || 0}</span>`;
+  const heading = (text) => `<div class="picker-group" role="presentation">${text}</div>`;
+
+  let html = people
+    .map(([id, s]) =>
+      option(`data-action="move-line" data-speaker="${id}"`, avatar(id, s.name), escapeHtml(s.name), lineCount(id)),
+    )
+    .join("");
+  html += saved
+    .map((name) =>
+      option(
+        `data-action="move-line-new" data-name="${escapeHtml(name)}"`,
+        avatar(name.length, name),
+        escapeHtml(name),
+        `<span class="badge">saved voice</span>`,
+      ),
+    )
+    .join("");
+  if (newName)
+    html += option(
+      `data-action="move-line-new" data-name="${escapeHtml(newName)}"`,
+      icon("userPlus"),
+      `Add <b>${escapeHtml(newName)}</b> as a new person`,
+    );
+  if (unnamed.length && (query.trim() || state.showUnnamed || !people.length)) {
+    html += heading("Unnamed voices");
+    html += unnamed
+      .map(([id, s]) =>
+        option(`data-action="move-line" data-speaker="${id}"`, avatar(id, s.name), escapeHtml(s.name), lineCount(id)),
+      )
+      .join("");
+  } else if (unnamed.length) {
+    html += `<button class="popover-option subtle" role="option" data-action="show-unnamed" tabindex="-1">Show ${unnamed.length} unnamed voices</button>`;
+  }
+  $("who-options").innerHTML = html || `<div class="picker-empty">Type a name to add someone new.</div>`;
+  setActiveChoice(0);
+}
+
+/** Arrow keys move through the list while typing stays in the search box. */
+function setActiveChoice(index) {
+  const choices = [...$("who-options").querySelectorAll("[role=option]")];
+  choices.forEach((choice, i) => {
+    choice.id = `who-option-${i}`;
+    choice.classList.toggle("active", i === index);
+    choice.setAttribute("aria-selected", String(i === index));
+  });
+  const active = choices[index];
+  $("who-search").setAttribute("aria-activedescendant", active ? active.id : "");
+  active?.scrollIntoView({ block: "nearest" });
+}
+
+function onWhoSearchKey(event) {
+  const choices = [...$("who-options").querySelectorAll("[role=option]")];
+  const current = choices.findIndex((choice) => choice.classList.contains("active"));
+  if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+    event.preventDefault();
+    const step = event.key === "ArrowDown" ? 1 : -1;
+    setActiveChoice(Math.min(Math.max(current + step, 0), choices.length - 1));
+  } else if (event.key === "Enter") {
+    event.preventDefault();
+    choices[current]?.click();
+  }
+}
+
+function blockLabel(lineId) {
+  const count = blockStartingAt(lineId).length;
+  return count === 1 ? "Only this line was said by" : `These ${count} lines were said by`;
 }
 
 function positionNear(popover, anchor) {
@@ -481,11 +602,18 @@ async function renameSpeaker(speakerId, name) {
 
 async function moveLine(lineId, speakerId, newSpeakerName) {
   const before = snapshot();
-  const json = newSpeakerName ? { new_speaker_name: newSpeakerName } : { speaker_id: speakerId };
-  const session = await api(lineUrl(lineId), { method: "PATCH", json });
+  const lineIds = blockStartingAt(lineId).map((line) => line.id);
+  const who = newSpeakerName ? { new_speaker_name: newSpeakerName } : { speaker_id: speakerId };
+  const session = await api(`/api/sessions/${state.session.id}/lines/speaker`, {
+    method: "POST",
+    json: { line_ids: lineIds, ...who },
+  });
   closeFloating();
   setSession(session);
-  toast("Line moved", undoTo(before));
+  const chosenId =
+    speakerId ?? Object.keys(session.speakers).find((id) => session.speakers[id].name === newSpeakerName);
+  state.recentSpeakers = [chosenId, ...state.recentSpeakers.filter((id) => id !== chosenId)].slice(0, 8);
+  toast(lineIds.length === 1 ? "Line moved" : `Moved ${lineIds.length} lines`, undoTo(before));
 }
 
 // ----- Edit mode -----
@@ -1271,7 +1399,18 @@ const actions = {
     refreshSessionList();
   },
   "speaker-menu": (el) => openSpeakerMenu(el),
-  "move-line": (el) => moveLine(el.dataset.line, el.dataset.speaker),
+  "move-line": (el) => moveLine($("speaker-popover").dataset.line, el.dataset.speaker),
+  "move-line-new": (el) => moveLine($("speaker-popover").dataset.line, null, el.dataset.name),
+  "rename-instead": () => {
+    renderRenameForm($("speaker-popover"));
+    $("speaker-popover").querySelector("input").select();
+    $("speaker-popover").querySelector("input").focus();
+  },
+  "show-unnamed": () => {
+    state.showUnnamed = true;
+    renderWhoOptions($("who-search").value);
+    $("who-search").focus();
+  },
   seek: (el) => seek(Number(el.dataset.time)),
   "toggle-edit": () => setEditing(!state.editing),
   "toggle-replace": () => {
@@ -1317,7 +1456,6 @@ document.addEventListener("submit", (event) => {
   const name = new FormData(form).get("name")?.toString().trim();
   if (!name) return;
   if (form.dataset.form === "rename-speaker") renameSpeaker(form.dataset.speaker, name);
-  if (form.dataset.form === "new-speaker") moveLine(form.dataset.line, null, name);
 });
 
 document.addEventListener("focusout", (event) => {
@@ -1414,6 +1552,15 @@ function wireInputs() {
 
   document.addEventListener("input", (event) => {
     if (event.target.id === "set-threshold") $("threshold-value").textContent = Number(event.target.value).toFixed(2);
+    if (event.target.id === "who-search") renderWhoOptions(event.target.value);
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.target.id === "who-search") onWhoSearchKey(event);
+  });
+  // Hovering and arrow keys share one highlight, so there's never two "selected" rows.
+  document.addEventListener("mouseover", (event) => {
+    const choice = event.target.closest?.("#who-options [role=option]");
+    if (choice) setActiveChoice([...$("who-options").querySelectorAll("[role=option]")].indexOf(choice));
   });
 }
 
