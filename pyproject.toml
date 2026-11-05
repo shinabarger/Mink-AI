@@ -8,6 +8,8 @@ requires-python = ">=3.11,<3.14"
 dependencies = [
     # Apple Silicon Macs use the GPU through MLX. Everything else uses faster-whisper on the CPU.
     "mlx-whisper>=0.4.2; sys_platform == 'darwin' and platform_machine == 'arm64'",
+    # The small language model that double-checks close calls in Rematch speakers (Apple Silicon only).
+    "mlx-lm>=0.22; sys_platform == 'darwin' and platform_machine == 'arm64'",
     "faster-whisper>=1.1; sys_platform != 'darwin' or platform_machine != 'arm64'",
     # Pinned together: sherpa-onnx loads libonnxruntime from sherpa-onnx-core, and a mismatch crashes on import.
     "sherpa-onnx==1.13.8",

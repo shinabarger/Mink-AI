@@ -1,6 +1,6 @@
 """Changes you make to a finished transcript: names, lines, text, and undo."""
 
-from . import jobs, pipeline, speakers, store, timing, voice_check
+from . import jobs, rematch, speakers, store, timing
 from .corrections import replace_in_lines
 
 
@@ -108,23 +108,14 @@ def rename_session(session_id: str, title: str) -> dict:
     return store.update(session_id, title=title.strip() or "Untitled session")
 
 
-def relabel_from_fixes(session_id: str) -> tuple[dict, int, int]:
-    """Re-sort every line using the lines you assigned by hand as voice samples.
-    Returns (session, lines moved, number of people taught)."""
+def start_rematch(session_id: str) -> dict:
+    """Queue "Rematch speakers". The current transcript is kept as the previous version, so it can be undone."""
     if jobs.is_running(session_id):
         raise ValueError("This recording is still being processed.")
-    with store.transaction(session_id) as session:
-        lines = session["lines"]
-        if not any(line.get("confirmed") for line in lines):
-            raise ValueError(
-                "First pick the right speaker on a few lines for each person (click a name on a line), then try again."
-            )
-        vectors = pipeline.line_vectors(session_id, lines)
-        unknown = speakers.find_by_name(session["speakers"], speakers.UNKNOWN_NAME)
-        short_vectors = pipeline.short_line_vectors(session_id, lines)
-        moved, people_taught = voice_check.relabel_from_fixes(lines, vectors, unknown, short_vectors)
-        speakers.drop_unused(session)
-    return session, moved, people_taught
+    rematch.check_ready(store.get(session_id))
+    store.save_previous_version(session_id, "Rematch speakers")
+    jobs.enqueue(session_id, job=jobs.REMATCH_JOB)
+    return store.get(session_id)
 
 
 def _find_line(session: dict, line_id: int) -> dict:

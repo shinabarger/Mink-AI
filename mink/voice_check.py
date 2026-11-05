@@ -13,6 +13,7 @@ are left alone.
 """
 
 import bisect
+from typing import NamedTuple
 
 import numpy as np
 
@@ -27,6 +28,15 @@ UNSURE_MARGIN = 0.05
 SHORT_MIN_SECONDS = 0.25
 # A short sample is noisier, so it needs a clearer winner before it moves a line that already has a name.
 SHORT_UNSURE_MARGIN = 0.1
+# How many voices a close call is narrowed down to for the context check.
+CLOSE_CALL_OPTIONS = 3
+
+
+class RelabelResult(NamedTuple):
+    moved: int
+    people_taught: int
+    # line id -> the speakers it most likely is, best first. Only lines the voice couldn't settle.
+    close_calls: dict[int, list[str]]
 
 
 def spans_to_embed(lines: list[dict]) -> list[tuple[float, float]]:
@@ -78,7 +88,7 @@ def relabel_from_fixes(
     vectors: dict[int, np.ndarray],
     unknown_speaker: str | None = None,
     short_vectors: dict[int, np.ndarray] | None = None,
-) -> tuple[int, int]:
+) -> RelabelResult:
     """Re-sort lines using the ones you fixed by hand as references.
 
     People you taught are compared against everyone else's current voice too,
@@ -87,18 +97,19 @@ def relabel_from_fixes(
     Unknown always get a best guess, so a rematch empties Unknown instead of
     leaving them for you. Short lines ("Yeah.") are judged by their own short
     voice sample, with a stricter bar. Close calls keep the dashed "not sure"
-    edge so you can spot-check them. Lines you fixed never move.
-    Returns (lines moved, number of people taught).
+    edge, and are returned with their likeliest speakers so the context check
+    can take a second look. Lines you fixed never move.
     """
     taught = _centroids(lines, vectors, lambda line: line.get("confirmed"))
     if not taught:
-        return 0, 0
+        return RelabelResult(0, 0, {})
     untaught = _centroids(
         lines, vectors, lambda line: line["speaker"] not in taught and line["speaker"] != unknown_speaker
     )
     candidates = {**untaught, **taught}
     short_vectors = short_vectors or {}
     moved = 0
+    close_calls: dict[int, list[str]] = {}
     for line in lines:
         is_short = line["id"] not in vectors
         vector = short_vectors.get(line["id"]) if is_short else vectors[line["id"]]
@@ -112,11 +123,15 @@ def relabel_from_fixes(
         if (in_unknown or clear_match) and best_speaker != line["speaker"]:
             line["speaker"] = best_speaker
             moved += 1
-    return moved + _fill_short_unknown_lines(lines, unknown_speaker), len(taught)
+        if line["unsure"]:
+            close_calls[line["id"]] = [speaker for _score, speaker in scores[:CLOSE_CALL_OPTIONS]]
+    filled = _fill_short_unknown_lines(lines, unknown_speaker, close_calls)
+    return RelabelResult(moved + filled, len(taught), close_calls)
 
 
-def _fill_short_unknown_lines(lines: list[dict], unknown_speaker: str | None) -> int:
-    """Lines too short to sample at all ("Oh.") take the speaker of the closest line in time."""
+def _fill_short_unknown_lines(lines: list[dict], unknown_speaker: str | None, close_calls: dict[int, list[str]]) -> int:
+    """Lines too short to sample at all ("Oh.") take the speaker of the closest line in time.
+    They are always close calls, with the speakers around them as the options."""
     known = [line for line in lines if line["speaker"] != unknown_speaker]
     if unknown_speaker is None or not known:
         return 0
@@ -126,10 +141,10 @@ def _fill_short_unknown_lines(lines: list[dict], unknown_speaker: str | None) ->
         if line["speaker"] != unknown_speaker or line.get("confirmed"):
             continue
         index = bisect.bisect_left(starts, line["start"])
-        neighbours = known[max(0, index - 1) : index + 1]
-        nearest = min(neighbours, key=lambda other: _gap(line, other))
-        line["speaker"] = nearest["speaker"]
+        nearby = sorted(known[max(0, index - 3) : index + 3], key=lambda other: _gap(line, other))
+        line["speaker"] = nearby[0]["speaker"]
         line["unsure"] = True
+        close_calls[line["id"]] = list(dict.fromkeys(other["speaker"] for other in nearby))[:CLOSE_CALL_OPTIONS]
         filled += 1
     return filled
 

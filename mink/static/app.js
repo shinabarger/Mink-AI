@@ -20,7 +20,10 @@ const state = {
   editing: false,
   recentSpeakers: [], // Speaker ids you picked lately, so they sit at the top of the "Who said this?" list
   showUnnamed: false,
-  speakerFilter: null, // Speaker id whose lines are the only ones shown, or null for everyone
+  speakerFilter: null,
+  reviewing: false, // "Name voices" mode: stepping through unnamed voices one at a time
+  reviewSkipped: [], // Voices skipped in this pass, so they come around last
+  hideVoices: readLocal("mink-hide-voices", "") === "1", // Plain transcript, for when the voice labels aren't helping // Speaker id whose lines are the only ones shown, or null for everyone
   search: { query: "", hits: [], index: -1 },
   playingLineId: null,
   progressStart: null, // {time, progress} for the ETA estimate
@@ -343,6 +346,7 @@ function renderTranscriptView() {
   $("session-meta").textContent =
     `${dateLabel(s.created_at)} · ${longDuration(s.duration || 0)} · ${speakerCount} speakers · ${s.lines.length} lines`;
   if (state.speakerFilter && !s.speakers[state.speakerFilter]) state.speakerFilter = null;
+  if (!state.speakerFilter) state.reviewing = false;
   renderVersionBar();
   renderFilterBar();
   renderSpeakerChips();
@@ -353,11 +357,18 @@ function renderTranscriptView() {
 /** After a redo, offer the transcript from before it. This is the undo for redoing. */
 function renderVersionBar() {
   const previous = state.session.previous_version;
-  $("version-bar").hidden = !previous;
-  if (!previous) return;
+  const notice = state.session.notice;
+  $("version-bar").hidden = !previous && !notice;
+  if (!previous) {
+    if (notice)
+      $("version-bar").innerHTML = `${icon("close")}<span>${escapeHtml(notice)}</span>
+        <button class="text-btn" data-action="keep-version" data-tip="Hide this message">Dismiss</button>`;
+    return;
+  }
+  const summary = previous.label === "Rematch speakers" && state.session.rematch_summary;
   const message = previous.swapped
     ? `You're looking at the version from before ${previous.label}.`
-    : `${previous.label} replaced the earlier version of this transcript.`;
+    : summary || `${previous.label} replaced the earlier version of this transcript.`;
   const switchLabel = previous.swapped ? "Switch to the newer version" : "Switch back to the earlier version";
   $("version-bar").innerHTML = `
     ${icon("refresh")}<span>${escapeHtml(message)}</span>
@@ -373,18 +384,25 @@ function lineCounts() {
 
 function renderSpeakerChips() {
   const counts = lineCounts();
-  $("speaker-chips").innerHTML = Object.entries(state.session.speakers)
-    .map(([id, speaker]) => {
-      const on = state.speakerFilter === id;
-      return `
+  const unnamed = unnamedVoices().length;
+  const reviewChip =
+    unnamed && !state.reviewing
+      ? `<button class="chip review" data-action="start-review" data-tip="Go through them one at a time and say who each one is">${icon("userPlus")}Name voices<span class="count">${unnamed} left</span></button>`
+      : "";
+  $("speaker-chips").innerHTML =
+    reviewChip +
+    Object.entries(state.session.speakers)
+      .map(([id, speaker]) => {
+        const on = state.speakerFilter === id;
+        return `
     <button class="chip ${on ? "on" : ""}" data-action="filter-speaker" data-speaker="${id}" aria-pressed="${on}"
       data-tip="${on ? "Show everyone again" : `Show only ${escapeHtml(speaker.name)}'s lines`}">
       ${avatar(id, speaker.name)}${escapeHtml(speaker.name)}
       ${speaker.auto_named ? `<span class="badge" data-tip="Guessed from your voice library. Rename to confirm.">auto</span>` : ""}
       <span class="count">${counts[id] || 0}</span>
     </button>`;
-    })
-    .join("");
+      })
+      .join("");
 }
 
 /** Show only one speaker's lines, so you can check them one voice at a time. */
@@ -397,9 +415,10 @@ function setSpeakerFilter(speakerId) {
 }
 
 function renderFilterBar() {
-  const id = state.speakerFilter;
+  const id = state.hideVoices ? null : state.speakerFilter;
   $("filter-bar").hidden = !id;
   if (!id) return;
+  if (state.reviewing) return renderReviewBar(id);
   const speaker = state.session.speakers[id];
   const count = lineCounts()[id] || 0;
   $("filter-bar").innerHTML = `
@@ -408,9 +427,80 @@ function renderFilterBar() {
     <button class="btn btn-ghost" data-action="filter-speaker" data-speaker="${id}" data-tip="Show every line again">${icon("close")}Show everyone</button>`;
 }
 
+// ----- Name voices: step through unnamed voices one at a time -----
+
+/** Voices still called "Speaker N", most lines first, then Unknown (a mix of voices). Skipped ones go last. */
+function unnamedVoices() {
+  const { speakers } = state.session;
+  const counts = lineCounts();
+  const withLines = Object.keys(speakers).filter((id) => counts[id] && isPlaceholderName(speakers[id].name));
+  const isUnknown = (id) => speakers[id].name === "Unknown";
+  const ordered = withLines.sort((a, b) => isUnknown(a) - isUnknown(b) || counts[b] - counts[a]);
+  const wasSkipped = (id) => state.reviewSkipped.includes(id);
+  return [...ordered.filter((id) => !wasSkipped(id)), ...state.reviewSkipped.filter((id) => ordered.includes(id))];
+}
+
+function startReview() {
+  state.reviewing = true;
+  state.reviewSkipped = [];
+  showNextUnnamedVoice();
+}
+
+function stopReview() {
+  state.reviewing = false;
+  setSpeakerFilter(null);
+}
+
+function showNextUnnamedVoice() {
+  const next = unnamedVoices()[0];
+  if (!next) {
+    state.reviewing = false;
+    setSpeakerFilter(null);
+    toast("Every voice has a name.");
+    return;
+  }
+  setSpeakerFilter(next);
+}
+
+function skipVoice(id) {
+  state.reviewSkipped = [...state.reviewSkipped.filter((skipped) => skipped !== id), id];
+  showNextUnnamedVoice();
+}
+
+function renderReviewBar(id) {
+  const speaker = state.session.speakers[id];
+  const count = lineCounts()[id] || 0;
+  const remaining = unnamedVoices();
+  const position = `${remaining.indexOf(id) + 1} of ${remaining.length}`;
+  const lines = count === 1 ? "1 line" : `${count} lines`;
+  const isUnknown = speaker.name === "Unknown";
+  const message = isUnknown
+    ? `<b>Unknown</b> (${position}): lines Mink wasn't sure about, ${lines}. It's a mix of voices, so click the name on each line to say who said it.`
+    : `Unnamed voice ${position}: <b>${escapeHtml(speaker.name)}</b>, ${lines}. Press play to hear only them.`;
+  const nameButton = isUnknown
+    ? ""
+    : `<button class="btn btn-primary" data-action="name-voice" data-speaker="${id}" data-tip="Pick who this is. Their lines all move to that person.">${icon("userPlus")}Who is this?</button>`;
+  $("filter-bar").innerHTML = `
+    <span>${message}</span>
+    ${nameButton}
+    <button class="btn btn-ghost" data-action="skip-voice" data-speaker="${id}" data-tip="Come back to this one later">Skip</button>
+    <button class="btn btn-ghost" data-action="stop-review" data-tip="Show every line again">${icon("close")}Done</button>`;
+  $("filter-bar").querySelector("[data-action=name-voice]")?.focus();
+}
+
+/** Picking a person for a whole voice renames it, which merges it into that person if they exist. */
+async function nameVoice(speakerId, name) {
+  const reviewing = state.reviewing; // Merging clears the filter, so remember we were stepping through
+  await renameSpeaker(speakerId, name);
+  if (reviewing) {
+    state.reviewing = true;
+    showNextUnnamedVoice();
+  }
+}
+
 /** While filtered, jump over audio from speakers that aren't shown. */
 function skipHiddenSpeakers() {
-  const id = state.speakerFilter;
+  const id = state.hideVoices ? null : state.speakerFilter;
   const player = audio();
   if (!id || player.paused) return;
   const time = player.currentTime;
@@ -424,18 +514,20 @@ function skipHiddenSpeakers() {
 function renderLines() {
   const { speakers, lines } = state.session;
   const query = state.search.query;
-  const filter = state.speakerFilter;
-  const html = lines
-    .map((line, index) => {
-      if (filter && line.speaker !== filter) return "";
-      const name = speakers[line.speaker]?.name || "Unknown";
-      const previous = lines[index - 1];
-      const sameSpeaker = continuesBlock(previous, line);
-      const classes = [line.id === state.playingLineId && "playing", sameSpeaker && "same", line.unsure && "unsure"]
-        .filter(Boolean)
-        .join(" ");
-      const hint = line.unsure ? ` title="Mink isn't sure who said this one"` : "";
-      return `
+  const filter = state.hideVoices ? null : state.speakerFilter;
+  const html = state.hideVoices
+    ? plainTranscriptHtml(lines, query)
+    : lines
+        .map((line, index) => {
+          if (filter && line.speaker !== filter) return "";
+          const name = speakers[line.speaker]?.name || "Unknown";
+          const previous = lines[index - 1];
+          const sameSpeaker = continuesBlock(previous, line);
+          const classes = [line.id === state.playingLineId && "playing", sameSpeaker && "same", line.unsure && "unsure"]
+            .filter(Boolean)
+            .join(" ");
+          const hint = line.unsure ? ` title="Mink isn't sure who said this one"` : "";
+          return `
       <div class="line ${classes}" data-line="${line.id}"${hint}>
         ${avatar(line.speaker, name)}
         <div class="line-head">
@@ -444,12 +536,44 @@ function renderLines() {
         </div>
         <div class="line-text" data-line="${line.id}">${lineTextHtml(line, query)}</div>
       </div>`;
-    })
-    .join("");
+        })
+        .join("");
   const empty = filter ? "No lines left for this speaker." : "No speech was found in this recording.";
   $("transcript").innerHTML = html || `<div class="empty">${empty}</div>`;
   $("transcript").classList.toggle("editing", state.editing);
   if (query) collectSearchHits();
+}
+
+/** Without voices, lines flow together as paragraphs, with a new paragraph and timestamp after a pause. */
+function plainTranscriptHtml(lines, query) {
+  const paragraphs = [];
+  lines.forEach((line, index) => {
+    if (index === 0 || line.start - lines[index - 1].end > 1.5) paragraphs.push([]);
+    paragraphs[paragraphs.length - 1].push(line);
+  });
+  const lineHtml = (line) =>
+    `<div class="line ${line.id === state.playingLineId ? "playing" : ""}" data-line="${line.id}"><div class="line-text" data-line="${line.id}">${lineTextHtml(line, query)}</div></div>`;
+  return paragraphs
+    .map(
+      (group) => `
+    <div class="para">
+      <button class="stamp" data-action="seek" data-time="${group[0].start}" data-tip="Play from here">${clock(group[0].start)}</button>
+      <div class="para-text">${group.map(lineHtml).join(" ")}</div>
+    </div>`,
+    )
+    .join("");
+}
+
+function setHideVoices(on) {
+  state.hideVoices = on;
+  writeLocal("mink-hide-voices", on ? "1" : "");
+  $("transcript-view").classList.toggle("no-voices", on);
+  $("voices-toggle").setAttribute("aria-pressed", String(on));
+  $("voices-toggle").querySelector("span").textContent = on ? "Show voices" : "Hide voices";
+  closeFloating();
+  if (state.session?.status !== "done") return;
+  renderFilterBar();
+  renderLines();
 }
 
 /** A line joins the block above it (no name shown) when the same voice keeps going without a long pause. */
@@ -477,6 +601,14 @@ function openSpeakerMenu(button) {
   focusBeforePopover = button;
   popover.dataset.speaker = button.dataset.speaker;
   popover.dataset.line = button.dataset.line ?? "";
+  popover.dataset.mode = button.dataset.action === "name-voice" ? "voice" : "line";
+  if (popover.dataset.mode === "voice") {
+    renderWhoPicker(popover);
+    popover.hidden = false;
+    positionNear(popover, button);
+    $("who-search").focus();
+    return;
+  }
   // A name on a line asks "who said this?". A chip at the top renames that speaker everywhere.
   if (button.dataset.line === undefined) renderRenameForm(popover);
   else renderWhoPicker(popover);
@@ -504,9 +636,10 @@ function renderRenameForm(popover) {
 /** One search box and a short list: type a few letters, press Enter. */
 function renderWhoPicker(popover) {
   const speaker = state.session.speakers[popover.dataset.speaker];
-  popover.setAttribute("aria-label", "Who said this");
+  const forVoice = popover.dataset.mode === "voice";
+  popover.setAttribute("aria-label", forVoice ? `Who is ${speaker.name}` : "Who said this");
   popover.innerHTML = `
-    <h4>${blockLabel(popover.dataset.line)}</h4>
+    <h4>${forVoice ? `Who is ${escapeHtml(speaker.name)}?` : blockLabel(popover.dataset.line)}</h4>
     <input id="who-search" class="picker-search" placeholder="Type a name, or pick one below" autocomplete="off"
       role="combobox" aria-expanded="true" aria-controls="who-options" aria-autocomplete="list" aria-label="Who said this">
     <div class="picker-list" id="who-options" role="listbox" aria-label="People"></div>
@@ -643,6 +776,16 @@ async function renameSpeaker(speakerId, name) {
   toast(merged ? `Merged ${oldName} into ${name}` : `Renamed ${oldName} to ${name} everywhere`, undoTo(before));
 }
 
+/** The picker either says who said a block of lines, or (in Name voices) who a whole voice is. */
+function pickFromPicker(speakerId, newName) {
+  const popover = $("speaker-popover");
+  if (popover.dataset.mode === "voice") {
+    nameVoice(popover.dataset.speaker, newName ?? state.session.speakers[speakerId].name);
+  } else {
+    moveLine(popover.dataset.line, speakerId, newName);
+  }
+}
+
 async function moveLine(lineId, speakerId, newSpeakerName) {
   const before = snapshot();
   const lineIds = blockStartingAt(lineId).map((line) => line.id);
@@ -656,6 +799,7 @@ async function moveLine(lineId, speakerId, newSpeakerName) {
   const chosenId =
     speakerId ?? Object.keys(session.speakers).find((id) => session.speakers[id].name === newSpeakerName);
   state.recentSpeakers = [chosenId, ...state.recentSpeakers.filter((id) => id !== chosenId)].slice(0, 8);
+  if (state.reviewing && !lineCounts()[state.speakerFilter]) showNextUnnamedVoice(); // That voice is all sorted
   toast(lineIds.length === 1 ? "Line moved" : `Moved ${lineIds.length} lines`, undoTo(before));
 }
 
@@ -1065,6 +1209,13 @@ async function openSettings() {
       <div id="fix-list">${fixes}</div>
     </div>
     <div class="field">
+      <label for="set-players">Players and characters (optional)</label>
+      <textarea id="set-players" class="short" placeholder="One per line, e.g.&#10;Josie = Chromamile&#10;David = GM">${escapeHtml(s.players)}</textarea>
+      <div class="hint">Helps Rematch speakers tell who's talking when someone is called by their character's name.</div>
+      <label class="check-label" style="margin-top:12px"><input type="checkbox" id="set-context" ${s.context_check ? "checked" : ""}> Double-check close calls with AI</label>
+      <div class="hint">During Rematch speakers, a language model running on this Mac reads the conversation around lines whose voice was a close call. Downloads about 4 GB the first time and makes Rematch take a few minutes longer.</div>
+    </div>
+    <div class="field">
       <label class="check-label"><input type="checkbox" id="set-autoname" ${s.auto_name_voices ? "checked" : ""}> Auto-name returning players</label>
       <div class="hint" style="margin-bottom:12px">Off is safer: new recordings start with Speaker 1, 2, 3 instead of guessing names that might be wrong.</div>
       <label for="set-threshold">Voice recognition strictness: <span id="threshold-value">${s.voice_match_threshold.toFixed(2)}</span></label>
@@ -1099,6 +1250,8 @@ async function saveSettings(extra = {}) {
       .filter(Boolean),
     voice_match_threshold: Number($("set-threshold")?.value ?? current.voice_match_threshold),
     auto_name_voices: $("set-autoname")?.checked ?? current.auto_name_voices,
+    players: $("set-players")?.value ?? current.players,
+    context_check: $("set-context")?.checked ?? current.context_check,
     hf_token: ($("set-token")?.value ?? current.hf_token).trim(),
     export_folder: ($("set-export-folder")?.value ?? current.export_folder).trim(),
     ...extra,
@@ -1245,12 +1398,9 @@ async function redo(speakersOnly) {
 }
 
 async function relabelFromFixes() {
-  const before = snapshot();
-  toast("Comparing every line to your fixes...");
-  const result = await api(`/api/sessions/${state.session.id}/relabel`, { method: "POST" });
-  setSession(result.session);
-  const people = result.people === 1 ? "1 person" : `${result.people} people`;
-  toast(`Moved ${result.moved} lines using your fixes for ${people}. Close calls have a dashed edge.`, undoTo(before));
+  // Runs in the background with a progress bar. The current version is kept, so the result can be undone.
+  setSession(await api(`/api/sessions/${state.session.id}/relabel`, { method: "POST" }));
+  refreshSessionList();
 }
 
 /** Restart the server, wait for it to come back, then reload the page. Also used by the Mac app's menu. */
@@ -1390,7 +1540,8 @@ const actions = {
   },
   "toggle-export": () => toggleMenu("export-menu"),
   export: async (el) => {
-    const url = `/api/sessions/${state.session.id}/export?format=${el.dataset.format}&timestamps=${$("export-timestamps").checked}`;
+    const options = `timestamps=${$("export-timestamps").checked}&speakers=${$("export-speakers").checked}`;
+    const url = `/api/sessions/${state.session.id}/export?format=${el.dataset.format}&${options}`;
     closeFloating();
     if (!state.info?.settings.export_folder) {
       window.location = url;
@@ -1425,7 +1576,7 @@ const actions = {
     setSession(await api(`/api/sessions/${state.session.id}/previous-version`, { method: "DELETE" }));
   },
   stop: async () => {
-    if (!confirm("Stop transcribing this recording? You can start it again later.")) return;
+    if (!confirm("Stop now? You can start it again later.")) return;
     setSession(await api(`/api/sessions/${state.session.id}/stop`, { method: "POST" }));
     refreshSessionList();
   },
@@ -1440,9 +1591,16 @@ const actions = {
     refreshSessionList();
   },
   "speaker-menu": (el) => openSpeakerMenu(el),
-  "filter-speaker": (el) => setSpeakerFilter(state.speakerFilter === el.dataset.speaker ? null : el.dataset.speaker),
-  "move-line": (el) => moveLine($("speaker-popover").dataset.line, el.dataset.speaker),
-  "move-line-new": (el) => moveLine($("speaker-popover").dataset.line, null, el.dataset.name),
+  "filter-speaker": (el) => {
+    state.reviewing = false;
+    setSpeakerFilter(state.speakerFilter === el.dataset.speaker ? null : el.dataset.speaker);
+  },
+  "move-line": (el) => pickFromPicker(el.dataset.speaker, null),
+  "move-line-new": (el) => pickFromPicker(null, el.dataset.name),
+  "start-review": startReview,
+  "stop-review": stopReview,
+  "skip-voice": (el) => skipVoice(el.dataset.speaker),
+  "name-voice": (el) => openSpeakerMenu(el),
   "rename-instead": () => {
     renderRenameForm($("speaker-popover"));
     $("speaker-popover").querySelector("input").select();
@@ -1455,6 +1613,7 @@ const actions = {
   },
   seek: (el) => seek(Number(el.dataset.time)),
   "toggle-edit": () => setEditing(!state.editing),
+  "toggle-voices": () => setHideVoices(!state.hideVoices),
   "toggle-replace": () => {
     $("replace-bar").hidden = !$("replace-bar").hidden;
     if (!$("replace-bar").hidden) $("replace-find").focus();
@@ -1609,6 +1768,7 @@ function wireInputs() {
 async function start() {
   fillIconPlaceholders();
   wireInputs();
+  setHideVoices(state.hideVoices);
   wireTooltips();
   setupDragAndDrop();
   state.info = await api("/api/info");

@@ -1245,3 +1245,39 @@ input[type="range"] {
   padding: 5px 10px;
   font-size: 14px;
 }
+/* Transcript without voices: plain paragraphs, no names */
+.no-voices .speaker-chips,
+.no-voices .filter-bar,
+.no-voices .redo-btn {
+  display: none !important;
+}
+.no-voices .para {
+  margin: 18px 12px 0;
+}
+.no-voices .para .stamp {
+  display: block;
+  margin-bottom: 4px;
+}
+.no-voices .line,
+.no-voices .line .line-text {
+  display: inline;
+  padding: 0;
+}
+.no-voices .line.playing {
+  background: none;
+}
+.no-voices .line.playing .line-text {
+  background: var(--playing);
+  border-radius: 4px;
+}
+textarea.short {
+  min-height: 70px;
+}
+.chip.review {
+  border-color: var(--teal);
+  color: var(--teal);
+  padding-left: 12px;
+}
+.chip.review .count {
+  color: var(--muted);
+}

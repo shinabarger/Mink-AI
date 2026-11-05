@@ -213,6 +213,7 @@ def discard_previous_version(session_id: str) -> dict:
     shutil.rmtree(_folder(session_id) / "previous", ignore_errors=True)
     with transaction(session_id) as session:
         session.pop("previous_version", None)
+        session.pop("notice", None)  # The same bar shows notices, so dismissing it clears them too
     return session
 
 

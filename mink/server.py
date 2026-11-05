@@ -36,6 +36,8 @@ class SettingsBody(BaseModel):
     auto_name_voices: bool = False
     hf_token: str = ""
     export_folder: str = ""
+    players: str = ""
+    context_check: bool = True
 
 
 class TitleBody(BaseModel):
@@ -196,7 +198,7 @@ def reprocess(session_id: str, body: ReprocessBody | None = None):
         speakers.forget_session_voices(store.get(session_id))
     if body.num_speakers is not None:
         store.update(session_id, num_speakers=body.num_speakers or None)
-    jobs.enqueue(session_id, speakers_only=body.speakers_only)
+    jobs.enqueue(session_id, job=jobs.SPEAKERS_ONLY_JOB if body.speakers_only else jobs.FULL_JOB)
     return store.get(session_id)
 
 
@@ -213,9 +215,14 @@ def audio(session_id: str):
 
 
 @app.get("/api/sessions/{session_id}/export")
-def export(session_id: str, file_format: Annotated[str, Query(alias="format")] = "txt", timestamps: bool = True):
+def export(
+    session_id: str,
+    file_format: Annotated[str, Query(alias="format")] = "txt",
+    timestamps: bool = True,
+    include_speakers: Annotated[bool, Query(alias="speakers")] = True,
+):
     """Download through the browser."""
-    filename, content = _export_file(session_id, file_format, timestamps)
+    filename, content = _export_file(session_id, file_format, timestamps, include_speakers)
     return Response(
         content,
         media_type="text/plain; charset=utf-8",
@@ -225,13 +232,16 @@ def export(session_id: str, file_format: Annotated[str, Query(alias="format")] =
 
 @app.post("/api/sessions/{session_id}/export")
 def export_to_folder(
-    session_id: str, file_format: Annotated[str, Query(alias="format")] = "txt", timestamps: bool = True
+    session_id: str,
+    file_format: Annotated[str, Query(alias="format")] = "txt",
+    timestamps: bool = True,
+    include_speakers: Annotated[bool, Query(alias="speakers")] = True,
 ):
     """Save straight into the export folder from Settings."""
     folder = Path(load_settings()["export_folder"]).expanduser()
     if not folder.is_dir():
         raise ValueError(f"The export folder doesn't exist: {folder}. Pick another one in Settings.")
-    filename, content = _export_file(session_id, file_format, timestamps)
+    filename, content = _export_file(session_id, file_format, timestamps, include_speakers)
     path = _unused_path(folder / filename)
     path.write_text(content)
     return {"path": str(path), "name": path.name, "folder": folder.name}
@@ -294,8 +304,7 @@ def keep_current_version(session_id: str):
 
 @app.post("/api/sessions/{session_id}/relabel")
 def relabel(session_id: str):
-    session, moved, people_taught = editing.relabel_from_fixes(session_id)
-    return {"session": session, "moved": moved, "people": people_taught}
+    return editing.start_rematch(session_id)
 
 
 @app.post("/api/sessions/{session_id}/replace")
@@ -333,9 +342,9 @@ def _restart_process() -> None:
     os.execv(sys.executable, [sys.executable, "-m", "mink"])
 
 
-def _export_file(session_id: str, file_format: str, timestamps: bool) -> tuple[str, str]:
+def _export_file(session_id: str, file_format: str, timestamps: bool, include_speakers: bool) -> tuple[str, str]:
     session = store.get(session_id)
-    content, extension = exporter.export(session, file_format, timestamps)
+    content, extension = exporter.export(session, file_format, timestamps, include_speakers)
     title = re.sub(r"[^\w\- ]", "", session["title"]).strip() or "transcript"
     return f"{title}.{extension}", content
 

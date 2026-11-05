@@ -49,6 +49,10 @@ DEFAULT_SETTINGS = {
     "hf_token": "",
     # Folder exports are saved to. Empty means a normal browser download (usually Downloads).
     "export_folder": "",
+    # "Player = Character", one per line. Helps the context check in Rematch speakers.
+    "players": "",
+    # Let a small local language model take a second look at close calls during Rematch speakers.
+    "context_check": True,
 }
 
 

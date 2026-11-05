@@ -21,9 +21,9 @@ def test_relabel_uses_confirmed_lines_and_never_moves_them():
     ]
     vectors = {0: np.array([1.0, 0.0]), 1: np.array([0.0, 1.0]), 2: np.array([0.1, 0.99])}
 
-    moved, people_taught = voice_check.relabel_from_fixes(lines, vectors)
+    result = voice_check.relabel_from_fixes(lines, vectors)
 
-    assert (moved, people_taught) == (1, 2)
+    assert (result.moved, result.people_taught) == (1, 2)
     assert [line["speaker"] for line in lines] == ["0", "1", "1", "0"]
 
 
@@ -45,9 +45,10 @@ def test_rematch_guesses_unknown_lines_instead_of_leaving_them():
     ]
     vectors = {0: np.array([1.0, 0.0]), 1: np.array([0.0, 1.0]), 2: np.array([0.2, 0.98])}
 
-    moved, _ = voice_check.relabel_from_fixes(lines, vectors, unknown_speaker="9")
+    result = voice_check.relabel_from_fixes(lines, vectors, unknown_speaker="9")
 
-    assert moved == 2
+    assert result.moved == 2
+    assert 3 in result.close_calls  # The short guess goes on to the context check
     assert [line["speaker"] for line in lines] == ["0", "1", "1", "1"]
 
 
