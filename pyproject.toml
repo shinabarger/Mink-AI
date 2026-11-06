@@ -1,6 +1,6 @@
 [project]
 name = "mink"
-version = "1.0.0"
+version = "1.1.0"
 description = "Free, local transcription with speaker labels for long recordings"
 license = "MIT"
 readme = "README.md"
